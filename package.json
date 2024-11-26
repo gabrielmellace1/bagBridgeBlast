@@ -1,0 +1,25 @@
+{
+  "name": "bagblastbridge",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "start": "webpack serve --open",
+    "build": "webpack"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "webpack": "^5.96.1",
+    "webpack-cli": "^5.1.4",
+    "webpack-dev-server": "^5.1.0"
+  },
+  "dependencies": {
+    "@eth-optimism/sdk": "^3.3.3",
+    "assert": "^2.1.0",
+    "buffer": "^6.0.3",
+    "ethers": "^5.7.2",
+    "process": "^0.11.10"
+  }
+}
