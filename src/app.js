@@ -1,8 +1,8 @@
 import { ethers } from "ethers";
 import { CrossChainMessenger } from "@eth-optimism/sdk";
-import { L1_RPC_URL, L2_RPC_URL, BAG_L1_ADDRESS, BAG_L2_ADDRESS } from "./constants";
+import { L1_RPC_URL, L2_RPC_URL, BAG_L1_ADDRESS, BAG_L2_ADDRESS, L1_CONTRACTS } from "./constants";
 
-let provider, signer;
+let l1Provider, l2Provider, l1Signer;
 const L2_CHAIN_ID = 81457; // Blast Network
 const TOKEN_AMOUNT = "333"; // Number of tokens to transfer
 const L2_WITHDRAWAL_HASH = "0x66d3dd7b2b3c5b65cfb9a7ac7502c760b4619a296df6a33f291e87e60a0d828f"; // L2 transaction hash
@@ -11,51 +11,21 @@ const updateStatus = (message) => {
     document.getElementById("status").innerText = `Status: ${message}`;
 };
 
-const connectWallet = async (chainId) => {
-    if (!window.ethereum) {
-        alert("Please install MetaMask!");
-        updateStatus("MetaMask not found. Install it to proceed.");
-        return null;
-    }
-
+// Initialize providers
+const initializeProviders = async () => {
     try {
-        const accounts = await window.ethereum.request({ method: "eth_requestAccounts" });
-        console.log("Connected account:", accounts[0]);
+        // L1 provider for Ethereum Mainnet
+        l1Provider = new ethers.providers.Web3Provider(window.ethereum);
+        l1Signer = l1Provider.getSigner();
 
-        const currentChainId = parseInt(await window.ethereum.request({ method: "eth_chainId" }), 16);
-        if (currentChainId !== chainId) {
-            console.log("Switching to chain ID:", chainId);
-            await window.ethereum.request({
-                method: "wallet_switchEthereumChain",
-                params: [{ chainId: `0x${chainId.toString(16)}` }],
-            });
-        }
+        // L2 provider for Blast (read-only)
+        l2Provider = new ethers.providers.JsonRpcProvider(L2_RPC_URL);
 
-        provider = new ethers.providers.Web3Provider(window.ethereum);
-        signer = provider.getSigner();
-
-        updateStatus(`Connected to ${chainId === 1 ? "Ethereum Mainnet" : "Blast Network"} with account: ${accounts[0]}`);
-        return signer;
+        console.log("Providers initialized for Ethereum Mainnet and Blast.");
+        updateStatus("Providers initialized.");
     } catch (error) {
-        console.error("Wallet connection failed:", error);
-        updateStatus("Failed to connect wallet or switch network.");
-        return null;
-    }
-};
-
-const setup = async () => {
-    try {
-        updateStatus("Connecting to Ethereum Mainnet...");
-        signer = await connectWallet(1);
-        if (!signer) throw new Error("Failed to connect to Ethereum Mainnet");
-
-        updateStatus("Switching to Blast network...");
-        await connectWallet(L2_CHAIN_ID);
-
-        console.log("Wallet setup complete.");
-    } catch (error) {
-        console.error("Setup failed:", error);
-        updateStatus("Setup failed. Please check the console for details.");
+        console.error("Error initializing providers:", error);
+        updateStatus("Error initializing providers. Check console for details.");
     }
 };
 
@@ -64,10 +34,10 @@ const approveL2Bridge = async () => {
         const l2TokenContract = new ethers.Contract(
             BAG_L2_ADDRESS,
             ["function approve(address spender, uint256 amount) external returns (bool)"],
-            signer
+            l1Signer // Use the Ethereum Mainnet signer
         );
 
-        const l2StandardBridgeAddress = "0x4200000000000000000000000000000000000010";
+        const l2StandardBridgeAddress = L1_CONTRACTS.L1StandardBridge;
         const amount = ethers.utils.parseUnits(TOKEN_AMOUNT, 18);
 
         console.log("Approving L2 Standard Bridge...");
@@ -78,19 +48,18 @@ const approveL2Bridge = async () => {
         updateStatus(`Approval Tx Hash: ${tx.hash}`);
     } catch (error) {
         console.error("Error during approval:", error);
-        updateStatus("Error during approval.");
+        updateStatus("Error during approval. Check console for details.");
     }
 };
 
 const initiateWithdrawal = async () => {
     try {
-        const l2BridgeAddress = "0x4200000000000000000000000000000000000010";
         const l2BridgeContract = new ethers.Contract(
-            l2BridgeAddress,
+            L1_CONTRACTS.L1StandardBridge,
             [
                 "function bridgeERC20(address _localToken, address _remoteToken, uint256 _amount, uint32 _minGasLimit, bytes calldata _extraData) external"
             ],
-            signer
+            l1Signer // Use the Ethereum Mainnet signer
         );
 
         const amount = ethers.utils.parseUnits(TOKEN_AMOUNT, 18);
@@ -110,32 +79,20 @@ const initiateWithdrawal = async () => {
         updateStatus(`Initiate Tx Hash: ${tx.hash}`);
     } catch (error) {
         console.error("Error during withdrawal initiation:", error);
-        updateStatus("Error during withdrawal initiation.");
+        updateStatus("Error during withdrawal initiation. Check console for details.");
     }
 };
 
 const proveWithdrawal = async () => {
     try {
-        console.log("Switching to Blast network to locate the withdrawal transaction...");
-        await connectWallet(L2_CHAIN_ID); // Ensure connected to Blast network
-
-        console.log("Initializing CrossChainMessenger for Blast...");
+        console.log("Initializing CrossChainMessenger for proving...");
         const messenger = new CrossChainMessenger({
-            l1SignerOrProvider: signer,
-            l2SignerOrProvider: signer,
+            l1SignerOrProvider: l1Signer, // Ethereum Mainnet signer for signing operations
+            l2SignerOrProvider: l2Provider, // Blast RPC provider for reading operations
             l1ChainId: 1, // Ethereum Mainnet
-            l2ChainId: L2_CHAIN_ID, // Blast network
+            l2ChainId: L2_CHAIN_ID, // Blast Network
             contracts: {
-                l1: {
-                    AddressManager: "0xE064B565Cf2A312a3e66Fe4118890583727380C0",
-                    L1CrossDomainMessenger: "0x5D4472f31Bd9385709ec61305AFc749F0fA8e9d0",
-                    L1StandardBridge: "0x697402166Fbf2F22E970df8a6486Ef171dbfc524",
-                    OptimismPortal: "0x0Ec68c5B10F21EFFb74f2A5C61DFe6b08C0Db6Cb",
-                    L2OutputOracle: "0x826D1B0D4111Ad9146Eb8941D7Ca2B6a44215c76",
-                    StateCommitmentChain: ethers.constants.AddressZero,
-                    CanonicalTransactionChain: ethers.constants.AddressZero,
-                    BondManager: ethers.constants.AddressZero,
-                },
+                l1: L1_CONTRACTS,
                 l2: {
                     L2CrossDomainMessenger: "0x4200000000000000000000000000000000000007",
                     L2ToL1MessagePasser: "0x4200000000000000000000000000000000000016",
@@ -144,8 +101,7 @@ const proveWithdrawal = async () => {
             },
         });
 
-        console.log("Messenger initialized on Blast network. Fetching cross-chain message...");
-        
+        console.log("Messenger initialized. Fetching cross-chain message...");
         const message = await messenger.toCrossChainMessage(L2_WITHDRAWAL_HASH);
         console.log("Cross-chain message details:", message);
 
@@ -153,10 +109,7 @@ const proveWithdrawal = async () => {
             throw new Error("No cross-chain message found for the given withdrawal hash.");
         }
 
-        console.log("Switching to Ethereum Mainnet for proving...");
-        await connectWallet(1); // Switch to Ethereum Mainnet
-
-        console.log("Proving withdrawal transaction...");
+        console.log("Proving withdrawal transaction on Ethereum Mainnet...");
         const tx = await messenger.proveMessage(L2_WITHDRAWAL_HASH);
         console.log("Prove transaction hash:", tx.hash);
         updateStatus(`Prove Tx Hash: ${tx.hash}`);
@@ -167,15 +120,73 @@ const proveWithdrawal = async () => {
 };
 
 
+const finalizeWithdrawal = async () => {
+    try {
+        console.log("Checking withdrawal status before finalizing...");
+
+        // Initialize the CrossChainMessenger
+        const messenger = new CrossChainMessenger({
+            l1SignerOrProvider: l1Signer,
+            l2SignerOrProvider: l2Provider,
+            l1ChainId: 1, // Ethereum Mainnet
+            l2ChainId: L2_CHAIN_ID, // Blast Network
+            contracts: {
+                l1: L1_CONTRACTS,
+                l2: {
+                    L2CrossDomainMessenger: "0x4200000000000000000000000000000000000007",
+                    L2ToL1MessagePasser: "0x4200000000000000000000000000000000000016",
+                    L2StandardBridge: "0x4200000000000000000000000000000000000010",
+                },
+            },
+        });
+
+        // Check the message status
+        const messageStatus = await messenger.getMessageStatus(L2_WITHDRAWAL_HASH);
+        console.log("Message Status:", messageStatus);
+
+        if (messageStatus !== "READY_TO_FINALIZE") {
+            console.log("Message is not ready to finalize. Current status:", messageStatus);
+            updateStatus(`Message not ready to finalize. Status: ${messageStatus}`);
+            return;
+        }
+
+        console.log("Fetching low-level message details...");
+        const lowLevelMessage = await messenger.toLowLevelMessage(L2_WITHDRAWAL_HASH);
+
+        if (!lowLevelMessage) {
+            throw new Error("No low-level message found for the given withdrawal hash.");
+        }
+
+        console.log("Initializing OptimismPortal contract...");
+        const optimismPortal = new ethers.Contract(
+            L1_CONTRACTS.OptimismPortal, // OptimismPortal contract address
+            [
+                "function finalizeWithdrawalTransaction(uint256 hintId, bytes calldata lowLevelMessage) external"
+            ],
+            l1Signer
+        );
+
+        const hintId = 0; // Hint ID, set to 0 for ERC20 transfers
+
+        console.log("Finalizing withdrawal transaction...");
+        const finalizeTx = await optimismPortal.finalizeWithdrawalTransaction(hintId, lowLevelMessage);
+        console.log("Finalize transaction hash:", finalizeTx.hash);
+        updateStatus(`Finalize Tx Hash: ${finalizeTx.hash}`);
+    } catch (error) {
+        console.error("Error during finalizing withdrawal transaction:", error);
+        updateStatus("Error during finalizing withdrawal transaction. Check console for details.");
+    }
+};
 
 
 
 
+
+
+// Initialize everything on page load
+initializeProviders();
 
 document.getElementById("approve").addEventListener("click", approveL2Bridge);
 document.getElementById("initiate").addEventListener("click", initiateWithdrawal);
 document.getElementById("prove").addEventListener("click", proveWithdrawal);
-
-
-
-setup();
+document.getElementById("withdraw").addEventListener("click", finalizeWithdrawal);
