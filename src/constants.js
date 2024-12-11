@@ -31,3 +31,9 @@ export const L1_CONTRACTS = {
     CanonicalTransactionChain: ethers.constants.AddressZero,
     BondManager: ethers.constants.AddressZero,
 };
+
+// L2 Contracts
+export const L2_CONTRACTS = {
+    StandardBridge: "0x4200000000000000000000000000000000000010"
+};
+

@@ -9,13 +9,28 @@
 <body>
     <div class="container">
         <h1>Bridge BAG Tokens</h1>
-        <div class="card">
-            <p id="status">Status: Initializing...</p>
-            <button id="approve" class="btn">Approve Bridge</button>
-            <button id="initiate" class="btn">Initiate Withdrawal</button>
-            <button id="prove" class="btn">Prove Withdrawal</button>
-            <button id="withdraw" class="btn"> Withdrawal</button>
-        </div>
+
+        <!-- Connect Wallet -->
+        <button id="connect" class="btn">Connect Wallet</button>
+
+        <!-- Amount Input -->
+        <label for="amount">Amount</label>
+        <input type="text" id="amount" placeholder="Enter amount" disabled />
+
+        <!-- Buttons -->
+        <button id="approve" class="btn" disabled>Approve Bridge</button>
+        <button id="initiate" class="btn" disabled>Initiate Withdrawal</button>
+
+        <!-- Tx Hash Input -->
+        <label for="tx-hash">Tx Hash</label>
+        <input type="text" id="tx-hash" placeholder="Enter transaction hash" disabled />
+
+        <button id="prove" class="btn" disabled>Prove Withdrawal</button>
+        <button id="finalize" class="btn" disabled>Finalize Withdrawal</button>
+
+        <!-- Console Log -->
+        <label for="console-log">Console Log</label>
+        <p id="console-log">Initializing...</p>
     </div>
     <script src="bundle.js"></script>
 </body>
